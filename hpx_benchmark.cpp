@@ -80,7 +80,7 @@ void write_to_file(int arity, int localities_per_node, double elapsed_average, s
 
 ////////////////////////////////////////////////////////////////////////////////////////
 // Hierarchical collectives
-/*
+
 void test_scatter_hierarchical(int arity, int lpn, int test_size, std::string operation)
 {
     std::size_t const num_localities =
@@ -297,7 +297,7 @@ void check_localities()
 	std::size_t const this_locality = hpx::get_locality_id();
 	std::cout << "locality: " << this_locality << "; node_name: " << node_name << "\n";
 }
-*/
+
 ////////////////////////////////////////////////////////////////////////////////////////
 // One shot collectives
 
@@ -711,7 +711,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
             }
 	    else
             {
-                //test_scatter_hierarchical(arity, lpn, test_size, operation);
+                test_scatter_hierarchical(arity, lpn, test_size, operation);
             }
         }
         else if (operation == "reduce")
@@ -723,7 +723,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
             }
             else
             {
-                //test_reduce_hierarchical(arity, lpn, test_size, operation);
+                test_reduce_hierarchical(arity, lpn, test_size, operation);
             }
         }
         else if (operation == "broadcast")
@@ -735,7 +735,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
             }
             else
             {
-                //test_broadcast_hierarchical(arity, lpn, test_size, operation);
+                test_broadcast_hierarchical(arity, lpn, test_size, operation);
             }
         }
         else if (operation == "gather")
@@ -747,7 +747,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
             }
             else
             {
-                //test_gather_hierarchical(arity, lpn, test_size, operation);
+                test_gather_hierarchical(arity, lpn, test_size, operation);
             }
         }
     }
