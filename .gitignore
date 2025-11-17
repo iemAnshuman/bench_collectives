@@ -3,3 +3,7 @@ scatter/*
 gather/*
 broadcast/*
 reduce/*
+
+test_mpi
+test_hpx
+build
