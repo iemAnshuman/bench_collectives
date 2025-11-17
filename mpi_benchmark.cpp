@@ -4,7 +4,7 @@
 #include <iostream>
 #include <fstream>
 
-constexpr int ITERATIONS = 1;
+constexpr int ITERATIONS = 10;
 
 std::vector<int> generateMatrix(int localities, int test_size, int start_val) {
     std::vector<std::vector<int>> result;
@@ -44,81 +44,141 @@ void write_to_file(int localities_per_node, double elapsed_average, std::string 
     file.close();
 }
 
+void compute_moments(std::vector<double> data)
+{
+    // Compute mean
+    double sum = 0.0;
+    for (double x : data) {
+        sum += x;
+    }
+    double mean = sum / data.size();
+
+    // Compute variance (population variance)
+    double varianceSum = 0.0;
+    for (double x : data) {
+        varianceSum += (x - mean) * (x - mean);
+    }
+    double variance = varianceSum / data.size();
+
+    std::cout << "Mean: " << mean << std::endl;
+    std::cout << "Variance: " << variance << std::endl;
+}
+
 void test_scatter(int lpn, int test_size, std::string modules, int algorithm)
 {
-    std::string operation = "scatter";
-    int this_locality, num_localities;
-    MPI_Comm_rank(MPI_COMM_WORLD, &this_locality); // Get rank
-    MPI_Comm_size(MPI_COMM_WORLD, &num_localities); // Get size
-    if (this_locality == 0)
+    // Get parameters
+    int this_rank, num_ranks;
+    MPI_Comm_rank(MPI_COMM_WORLD, &this_rank); // Get rank
+    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks); // Get size
+    // Result vector 
+    std::vector<double> result(ITERATIONS, 0.0);
+    // Data
+    std::vector<int> send_data;
+    std::vector<int> recv_data(test_size,0.0);
+    if (this_rank == 0)
     {
-        write_to_file(lpn, num_localities, operation, test_size, modules, algorithm);
+        send_data = generateMatrix(num_ranks, test_size, 42);
     }
 
-    double t1, t2;
-    t1 = MPI_Wtime(); 
     for (std::size_t i = 0; i != ITERATIONS; ++i)
     {
-        std::vector<int> send_data;
-        std::vector<int> recv_data(test_size);
-        if (this_locality == 0)
-        {
-            send_data = generateMatrix(num_localities, test_size, 42 + i);
-        }
+        double t_before, t_after;
+        // Time collective
+        t_before = MPI_Wtime();
         MPI_Scatter(send_data.data(), test_size, MPI_INT, recv_data.data(), test_size, MPI_INT, 0, MPI_COMM_WORLD);
+        t_after = MPI_Wtime(); 
+        // Check for correctness
         for (int check : recv_data)
         {
-                if( 42+ i + this_locality != check)
-                {
-                    std::cout << "ERROR with calculating Scatter with testsize " << test_size << " and " << num_localities <<" localities\n";
-                }
+            if( 42 + this_rank != check)
+            {
+                std::cout << "ERROR with calculating Scatter with testsize " << test_size << " and " << num_ranks <<" ranks\n";
+            }
+        }
+        // Write runtime into vector
+        if(this_rank == 0)
+        {
+            result[i] = t_after - t_before;
         }
     }
 
-    t2 = MPI_Wtime(); 
-    if (this_locality == 0)
+    if (this_rank == 0)
     {
-        write_to_file(lpn, (t2-t1)/ITERATIONS, operation, test_size, modules, algorithm);
+        compute_moments(result);
+    }
+    
+    if (this_rank == 0)
+    {
+        // Compute mean
+        double sum = 0.0;
+        for (double x : result) 
+        {
+            sum += x;
+        }
+        double mean = sum / result.size();
+
+        std::string operation = "scatter";
+        write_to_file(lpn, num_ranks, operation, test_size, modules, algorithm);
+        write_to_file(lpn, mean/ITERATIONS, operation, test_size, modules, algorithm);
     }
 }
 
 void test_broadcast(int lpn, int test_size, std::string modules, int algorithm)
 {
-    std::string operation = "broadcast";
-    int this_locality, num_localities;
-    MPI_Comm_rank(MPI_COMM_WORLD, &this_locality); // Get rank
-    MPI_Comm_size(MPI_COMM_WORLD, &num_localities); // Get size
-    if (this_locality == 0)
+    // Get parameters
+    int this_rank, num_ranks;
+    MPI_Comm_rank(MPI_COMM_WORLD, &this_rank); // Get rank
+    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks); // Get size
+    // Result vector 
+    std::vector<double> result(ITERATIONS, 0.0);
+    // Data
+    std::vector<int> send_data(test_size, 0.0);
+    if (this_rank == 0)
     {
-        write_to_file(lpn, num_localities, operation, test_size, modules, algorithm);
+        send_data = std::vector<int>(test_size, 1.0);
     }
 
-    double t1, t2;
-    t1 = MPI_Wtime(); 
     for (std::size_t i = 0; i != ITERATIONS; ++i)
     {
-        std::vector<int> send_data(test_size);
-        if (this_locality == 0)
-        {
-            send_data = std::vector<int>(test_size, i);
-        }
+        double t_before, t_after;
+        // Time collective
+        t_before = MPI_Wtime();
         MPI_Bcast(send_data.data(), test_size, MPI_INT, 0, MPI_COMM_WORLD);
-        if(i != send_data[0])
+        t_after = MPI_Wtime(); 
+        // Check for correctness
+        if(1.0 != send_data[0])
         {
-            std::cout << "ERROR with calculating Broadcast with testsize " << test_size << " and " << num_localities <<" localities\n";
+            std::cout << "ERROR with calculating Broadcast with testsize " << test_size << " and " << num_ranks <<" ranks\n";
         }
-        MPI_Barrier(MPI_COMM_WORLD); 
+        // Write runtime into vector
+        if(this_rank == 0)
+        {
+            result[i] = t_after - t_before;
+        }
     }
 
-    t2 = MPI_Wtime();
-    
-    if (this_locality == 0)
+    if (this_rank == 0)
     {
-        write_to_file(lpn, (t2-t1)/ITERATIONS, operation, test_size, modules, algorithm);
+        compute_moments(result);
+    }
+    
+    if (this_rank == 0)
+    {
+        // Compute mean
+        double sum = 0.0;
+        for (double x : result) 
+        {
+            sum += x;
+        }
+        double mean = sum / result.size();
+
+        std::string operation = "broadcast";
+        write_to_file(lpn, num_ranks, operation, test_size, modules, algorithm);
+        write_to_file(lpn, mean/ITERATIONS, operation, test_size, modules, algorithm);
     }
 }
 
-std::vector<double> test_reduce(int lpn, int test_size, std::string modules, int algorithm)
+void test_reduce(int lpn, int test_size, std::string modules, int algorithm)
 {
     // Get parameters
     int this_rank, num_ranks;
@@ -131,74 +191,103 @@ std::vector<double> test_reduce(int lpn, int test_size, std::string modules, int
     std::vector<int> recv_data(test_size);
     send_data = std::vector<int>(test_size, 1.0);
 
-
     for (std::size_t i = 0; i != ITERATIONS; ++i)
     {
-        // Timers
         double t_before, t_after;
+        // Time collective
         t_before = MPI_Wtime();
         MPI_Reduce(send_data.data(), recv_data.data(), test_size, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
         t_after = MPI_Wtime(); 
-
-        // if(this_rank == 0 && i*num_localities != recv_data[0])
-        // {
-        //     std::cout << "ERROR with calculating Reduce with testsize " << test_size << " and " << num_localities <<" localities\n";
-        // }
+        // Check for correctness
+        if(this_rank == 0 && num_ranks != recv_data[0])
+        {
+            std::cout << "ERROR with calculating Reduce with testsize " << test_size << " and " << num_ranks <<" ranks\n";
+        }
         // Write runtime into vector
         if(this_rank == 0)
         {
-            result[i] = t_before - t_after;
+            result[i] = t_after - t_before;
         }
     }
 
-    return result;
-    // if (this_locality == 0)
-    // {
-    //     write_to_file(lpn, (t2-t1)/ITERATIONS, operation, test_size, modules, algorithm);
-    // }
+    if (this_rank == 0)
+    {
+        compute_moments(result);
+    }
+    
+    if (this_rank == 0)
+    {
+        // Compute mean
+        double sum = 0.0;
+        for (double x : result) 
+        {
+            sum += x;
+        }
+        double mean = sum / result.size();
+
+        std::string operation = "reduce";
+        write_to_file(lpn, num_ranks, operation, test_size, modules, algorithm);
+        write_to_file(lpn, mean/ITERATIONS, operation, test_size, modules, algorithm);
+    }
 }
 
 void test_gather(int lpn, int test_size, std::string modules, int algorithm)
 {
-    /*
-    std::string operation = "gather";
-    int this_locality, num_localities;
-    MPI_Comm_rank(MPI_COMM_WORLD, &this_locality); // Get rank
-    MPI_Comm_size(MPI_COMM_WORLD, &num_localities); // Get size
-                                                    //
-    if (this_locality == 0)
-    {
-        write_to_file(lpn, num_localities, operation, test_size, modules, algorithm);
-    }
+    // Get parameters
+    int this_rank, num_ranks;
+    MPI_Comm_rank(MPI_COMM_WORLD, &this_rank); // Get rank
+    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks); // Get size
+    // Result vector 
+    std::vector<double> result(ITERATIONS, 0.0);
+    // Data
+    std::vector<int> send_data;
+    std::vector<int> recv_data(test_size*num_ranks);
+    send_data = std::vector<int>(test_size, this_rank);
 
-    double t_before, t_after;
-    t_before = MPI_Wtime();
-
-    for (std::uint32_t i = 0; i != ITERATIONS; ++i)
+    for (std::size_t i = 0; i != ITERATIONS; ++i)
     {
-                    
-        std::vector<int> send_data;
-        std::vector<int> recv_data(test_size*num_localities);
-        send_data = std::vector<int>(test_size, i+this_locality);
+        double t_before, t_after;
+        // Time collective
+        t_before = MPI_Wtime();
         MPI_Gather(send_data.data(), test_size, MPI_INT, recv_data.data(),test_size, MPI_INT, 0, MPI_COMM_WORLD);
-        if(this_locality == 0)
+        t_after = MPI_Wtime(); 
+        // Check for correctness
+        if(this_rank == 0)
         {
-            for (int j  = 0; j < num_localities; j++)
+            for (int j  = 0; j < num_ranks; j++)
             {
-                if (i+j != recv_data[j*test_size])
+                if (j != recv_data[j*test_size])
                 {
-                    std::cout << "ERROR with calculating Gather with testsize " << test_size << " and " << num_localities <<" localities. Result: " << recv_data[j*num_localities] << ". Expected: "<< i+j <<"\n";
+                    std::cout << "ERROR with calculating Gather with testsize " << test_size << " and " << num_ranks <<" rank\n";
                 }
-            } 
+            }
+        }
+        // Write runtime into vector
+        if(this_rank == 0)
+        {
+            result[i] = t_after - t_before;
         }
     }
 
-    t2 = MPI_Wtime(); 
-    if (this_locality == 0)
+    if (this_rank == 0)
     {
-        write_to_file(lpn, (t2-t1)/ITERATIONS, operation, test_size, modules, algorithm);
+        compute_moments(result);
     }
-    */
+    
+    if (this_rank == 0)
+    {
+        // Compute mean
+        double sum = 0.0;
+        for (double x : result) 
+        {
+            sum += x;
+        }
+        double mean = sum / result.size();
+
+        std::string operation = "gather";
+        write_to_file(lpn, num_ranks, operation, test_size, modules, algorithm);
+        write_to_file(lpn, mean/ITERATIONS, operation, test_size, modules, algorithm);
+    }
 }
 
 
@@ -228,7 +317,6 @@ int main(int argc, char** argv) {
     }
     else if (operation == "reduce")
     {
-        //data = 
         test_reduce(lpn, test_size, modules, algorithm);
     }
     else if (operation == "bcast")
@@ -241,23 +329,5 @@ int main(int argc, char** argv) {
     }
 
     MPI_Finalize(); // Finalize MPI
-    //                 //
-    //                 //
-    // // Compute mean
-    // double sum = 0.0;
-    // for (double x : data) {
-    //     sum += x;
-    // }
-    // double mean = sum / data.size();
-    //
-    // // Compute variance (population variance)
-    // double varianceSum = 0.0;
-    // for (double x : data) {
-    //     varianceSum += (x - mean) * (x - mean);
-    // }
-    // double variance = varianceSum / data.size();
-    //
-    // std::cout << "Mean: " << mean << std::endl;
-    // std::cout << "Variance: " << variance << std::endl;
     return 0;
 }
