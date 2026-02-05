@@ -2,6 +2,8 @@ set -e
 ROOT=$(pwd)
 #spack load /ezc6ffn #openmpi
 module load gcc/14.2.0
+spack install cxxopts
+spack install openmpi@5.0.5%gcc@14.2.0 arch=linux-almalinux9-skylake_avx512
 spack load openmpi@5.0.5%gcc@14.2.0 arch=linux-almalinux9-skylake_avx512
 #module load openmpi/5.0.5
 #spack load cxxopts
