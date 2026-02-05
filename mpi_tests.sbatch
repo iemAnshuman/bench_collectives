@@ -8,6 +8,7 @@
 #SBATCH --output=output_%j.log      # Standard output log
 #SBATCH --error=error_%j.log        # Error log file
 
+executable=$(pwd)/build/mpi/bin/benchmark_collectives_mpi
 pairs=("broadcast 1" "reduce 1" "scatter 1" "gather 1" )
 export PMIX_MCA_gds=hash
 iterations=10
@@ -23,7 +24,7 @@ execute_task() {
                 #16384 65536 262144 1048576 4194304 16777216 67108864; do
                 for (( j=0; j<$loop; j=j+1 ))
                 do
-                    srun --mpi=pmix --export=ALL,OMPI_MCA_coll_tuned_use_dynamic_rules=1,OMPI_MCA_coll_tuned_${task_name}_algorith=$i -N $node --ntasks-per-node $rpn -c 1 test_mpi --algorithm=$i --rpn=$rpn --operation=$task_name --test_size=$test_size --iterations=$iterations
+                    srun --mpi=pmix --export=ALL,OMPI_MCA_coll_tuned_use_dynamic_rules=1,OMPI_MCA_coll_tuned_${task_name}_algorith=$i -N $node --ntasks-per-node $rpn -c 1 $executable --algorithm=$i --rpn=$rpn --operation=$task_name --test_size=$test_size --iterations=$iterations
                 done
             done
         done
