@@ -73,11 +73,11 @@ void write_to_file(std::string collective, std::string modules, int algorithm, s
     << std::flush;
 
     // Create directory
-    std::string runtime_file_path = "result/mpi/" + collective + "/runtimes_" + collective + "_mpi";
+    std::string runtime_file_path = "result/mpi/" + collective + "/runtimes_" + collective + "_mpi.txt";
     create_parent_dir(runtime_file_path);
 
     // Add header if necessary
-    const std::string header = "collective;module;algorithm;nodes;ranks;rpn;size;iterations;mean;variance;\n";
+    const std::string header = "collective;module;algorithm;nodes;ranks;rpn;size;iterations;mean;variance\n";
     // Read existing content
     std::ifstream infile(runtime_file_path);
     std::stringstream buffer;
@@ -103,7 +103,7 @@ void write_to_file(std::string collective, std::string modules, int algorithm, s
             << size << ";"
             << iterations << ";"
             << moments.first << ";"
-            << moments.second << ";\n";
+            << moments.second << "\n";
     outfile.close();
 }
 
