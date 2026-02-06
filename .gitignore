@@ -1,8 +1,6 @@
 .DS_Store
 
-test_mpi
-test_hpx
 build
-dev_env
-logs/*.log
+hpx
 result
+logs/*.log
