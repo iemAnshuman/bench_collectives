@@ -4,5 +4,5 @@ test_mpi
 test_hpx
 build
 dev_env
-*.log
+logs/*.log
 result

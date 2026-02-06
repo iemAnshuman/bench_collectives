@@ -9,10 +9,11 @@
 #SBATCH --error=logs/error_%j.log        # Error log file
 
 module load gcc/14.2.0
-parcelport=lci # mpi tcp
-executable=$(pwd)/hpx/build_$parcelport/bin/benchmark_collectives_test
+parcelport=tcp #mpi # lci
+executable=$(pwd)/build/hpx/bin/benchmark_collectives_test
 iterations=10
-loop=5
+loop=1
+
 for test_size in 1 2 4 8 16 64 256 1024 4096; do
     #16384 65536 262144 1048576; do
     for lpn in 16; do
@@ -22,7 +23,11 @@ for test_size in 1 2 4 8 16 64 256 1024 4096; do
                     echo "operation $operation, node $node, arity $arity, test_size $test_size, lpn $lpn"
                     for (( j=0; j<$loop; j=j+1 ))
                     do
-                        srun -N $node --ntasks-per-node $lpn -c 1 $executable --arity=$arity --lpn=$lpn --operation=$operation --test_size=$test_size --iterations=$iterations
+                        srun -N $node --ntasks-per-node $lpn -c 1 \
+                             $executable --arity=$arity --lpn=$lpn --operation=$operation --test_size=$test_size --iterations=$iterations \
+                             --hpx:ini=hpx.parcel.$parcelport.enable=1 \
+                             --hpx:ini=hpx.parcel.bootstrap=$parcelport \
+                             --hpx:ini=hpx.parcel.$parcelport.priority=1000
                     done
                 done
             done

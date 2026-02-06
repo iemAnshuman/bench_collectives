@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-
 set -ex
-
-PARCELPORT=lci #mpi #tcp
-TCP=OFF
-MPI=OFF
-LCI=ON
-# Load compiler and hpx for all dependencies
+# Load compiler and dependencies
 module load gcc/14.2.0
-spack load hpx@1.11.0%gcc@14.2.0 arch=linux-almalinux9-skylake_avx512 malloc=jemalloc networking=tcp #${PARCELPORT}
+module load hwloc/2.11.2
+module load openmpi/5.0.5
+
 # Configuration
 export CC=gcc
 export CXX=g++
@@ -16,11 +12,13 @@ export CXX=g++
 BUILD_TYPE=Release
 CMAKE_COMMAND=cmake
 HPX_VERSION=master
+TCP=ON
+MPI=ON
+LCI=ON
 
 ROOT=$(pwd)
 DIR_SRC=${ROOT}/hpx
-DIR_BUILD=${ROOT}/hpx/build_${PARCELPORT}
-DIR_INSTALL=${ROOT}/install
+DIR_BUILD=${ROOT}/build/hpx
 
 DOWNLOAD_URL="git@github.com:STEllAR-GROUP/hpx.git"
 #DOWNLOAD_URL="https://github.com/STEllAR-GROUP/hpx.git"
@@ -52,7 +50,7 @@ if [[ ! -d ${DIR_BUILD}/CMakeFiles ]]; then
             -DCMAKE_EXE_LINKER_FLAGS="${LDCXXFLAGS}" \
             -DCMAKE_SHARED_LINKER_FLAGS="${LDCXXFLAGS}" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DHPX_WITH_MALLOC=jemalloc \
+            -DHPX_WITH_MALLOC=tcmalloc \
             -DHPX_WITH_NETWORKING=ON \
             -DHPX_WITH_DISTRIBUTED_RUNTIME=ON \
             -DHPX_WITH_MORE_THAN_64_THREADS=ON \
@@ -65,7 +63,10 @@ if [[ ! -d ${DIR_BUILD}/CMakeFiles ]]; then
             -DHPX_WITH_PARCELPORT_TCP=${TCP} \
             -DHPX_WITH_PARCELPORT_MPI=${MPI} \
             -DHPX_WITH_PARCELPORT_LCI=${LCI} \
-            -DHPX_WITH_FETCH_LCI=${LCI}
+            -DHPX_WITH_FETCH_LCI=${LCI} \
+            -DHPX_WITH_LCI_TAG=master \
+            -DHPX_WITH_FETCH_BOOST=ON \
+            -DHPX_WITH_FETCH_ASIO=ON
     )
 fi
 
