@@ -2,7 +2,6 @@
 set -ex
 # Load compiler and dependencies
 module load gcc/14.2.0
-module load hwloc/2.11.2
 module load openmpi/5.0.5
 
 # Configuration
@@ -66,6 +65,7 @@ if [[ ! -d ${DIR_BUILD}/CMakeFiles ]]; then
             -DHPX_WITH_FETCH_LCI=${LCI} \
             -DHPX_WITH_LCI_TAG=master \
             -DHPX_WITH_FETCH_BOOST=ON \
+            -DHPX_WITH_FETCH_HWLOC=ON \
             -DHPX_WITH_FETCH_ASIO=ON
     )
 fi
