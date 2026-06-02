@@ -4,8 +4,10 @@
 set -euo pipefail
 
 # Load dependencies
-module load gcc/14.2.0
-module load openmpi/5.0.5
+#module load gcc/14.2.0
+#module load openmpi/5.0.5
+
+spack load gcc@14.3.0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${ROOT}/mpi"

@@ -1,16 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=mpi_collectives       # Job name
-#SBATCH --nodes=16                       # Number of nodes
-#SBATCH --ntasks-per-node=16             # Tasks (ranks) per node
-#SBATCH --cpus-per-task=1                # 1 core per task
-#SBATCH --time=72:00:00                  # Time limit (hh:mm:ss)
-#SBATCH --partition=buran                # Specify partition
+#SBATCH --job-name=mpi_collectives           # Job name
+#SBATCH --nodes=4                 # Request up to 16 nodes
+#SBATCH --ntasks-per-node=64       # Default: 16 tasks per node
+#SBATCH --cpus-per-task=1           # 2 cores per task
+#SBATCH --time=72:00:00             # Time limit (hh:mm:ss)
+#SBATCH --partition=workq         # Specify partition
 #SBATCH --output=logs/output_%j.log      # Standard output log
 #SBATCH --error=logs/error_%j.log        # Error log file
 set -uo pipefail
 
-module load gcc/14.2.0
-module load openmpi/5.0.5
+#module load gcc/14.2.0
+#module load openmpi/5.0.5
+spack load gcc@14.3.0
 
 executable="$(pwd)/build/mpi/bin/benchmark_collectives_mpi"
 pairs=("broadcast 1" "reduce 1" "scatter 1" "gather 1")
@@ -31,8 +32,9 @@ execute_task() {
   fi
 
   for ((i=0; i<count; i++)); do
-    for rpn in 16; do
-        for node in 1 2 4 8 16; do
+    for rpn in 32; do
+        for node in 1 2 4; do
+            #8 16; do
             # Zero-pad the node range, e.g. buran[00-15] (handles node > 10).
             local nodelist="${partition}[$(printf '%02d' 0)-$(printf '%02d' $((node - 1)))]"
             for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do

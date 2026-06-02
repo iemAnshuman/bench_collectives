@@ -3,8 +3,12 @@
 # the collectives benchmark target.
 set -exo pipefail
 # Load compiler and dependencies
-module load gcc/14.2.0
-module load openmpi/5.0.5
+#module load gcc/14.2.0
+#module load openmpi/5.0.5
+spack load gcc@14.3.0
+module load hwloc
+#module unload intel-mpi/2021.5.1
+#module load openmpi/4.1.6/intel-2021.5.0
 
 # Configuration
 export CC=gcc
@@ -56,7 +60,7 @@ if [[ ! -d ${DIR_BUILD}/CMakeFiles ]]; then
             -DCMAKE_EXE_LINKER_FLAGS="${LDCXXFLAGS}" \
             -DCMAKE_SHARED_LINKER_FLAGS="${LDCXXFLAGS}" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DHPX_WITH_MALLOC=tcmalloc \
+            -DHPX_WITH_MALLOC=system \
             -DHPX_WITH_NETWORKING=ON \
             -DHPX_WITH_DISTRIBUTED_RUNTIME=ON \
             -DHPX_WITH_MORE_THAN_64_THREADS=ON \
@@ -72,7 +76,7 @@ if [[ ! -d ${DIR_BUILD}/CMakeFiles ]]; then
             -DHPX_WITH_FETCH_LCI=${LCI} \
             -DHPX_WITH_LCI_TAG=master \
             -DHPX_WITH_FETCH_BOOST=ON \
-            -DHPX_WITH_FETCH_HWLOC=ON \
+            -DHPX_WITH_FETCH_HWLOC=OFF \
             -DHPX_WITH_FETCH_ASIO=ON
     )
 fi

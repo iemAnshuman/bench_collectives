@@ -5,15 +5,17 @@ set -uo pipefail
 
 export LCI_ATTR_IBV_TD_STRATEGY=none
 
-module load gcc/14.2.0
-partition=buran
-parcelport=lci
+#module load gcc/14.2.0
+spack load gcc@14.3.0
+partition=workq
+parcelport=mpi
 executable="$(pwd)/build/hpx/bin/benchmark_collectives_test"
 iterations=10
-loop=10
+loop=1
 
 for lpn in 16; do
-    for node in 1 2 4 8 16; do
+    for node in 1 2 4; do
+	   # 8 16; do
         # Zero-pad the node range, e.g. buran[00-15] (handles node > 10 correctly).
         nodelist="${partition}[$(printf '%02d' 0)-$(printf '%02d' $((node - 1)))]"
         for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do
