@@ -37,6 +37,9 @@ for test_size in 1 2 4 8 16 64 256 1024 4096; do
                         srun --mpi=pmi2 -N "$node" --ntasks-per-node "$lpn" -c 2 \
                              "$executable" --arity="$arity" --lpn="$lpn" --operation="$operation" \
                              --test_size="$test_size" --iterations="$iterations" \
+                             --hpx:ini=hpx.parcel.tcp.enable=0 \
+                             --hpx:ini=hpx.parcel.mpi.enable=0 \
+                             --hpx:ini=hpx.parcel.lci.enable=0 \
                              --hpx:ini=hpx.parcel."$parcelport".enable=1 \
                              --hpx:ini=hpx.parcel.bootstrap="$parcelport" \
                              --hpx:ini=hpx.parcel."$parcelport".priority=1000
