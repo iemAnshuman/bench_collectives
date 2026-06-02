@@ -1,324 +1,333 @@
-#include <mpi.h>
-#include <cxxopts.hpp>
-#include <string>
-#include <iostream>
-#include <fstream>
-#include <filesystem>
+// MPI reference benchmark for collective operations.
+//
+// Times MPI_Bcast / MPI_Reduce / MPI_Scatter / MPI_Gather over a configurable
+// message size and iteration count, validates correctness, and appends the
+// per-run mean/variance to result/mpi/<collective>/runtimes_<collective>_mpi.txt.
+//
+// All collectives share a single timing/recording harness (CollectiveBench::run);
+// each collective only supplies its buffer setup, the timed MPI call, and a
+// correctness check.
 
-std::vector<int> generateMatrix(int localities, int test_size, int start_val) {
-    std::vector<std::vector<int>> result;
-    for (int i = 0; i < localities; ++i) {
-        result.push_back(std::vector<int>(test_size, start_val + i));
-    }
+#include <mpi.h>
+
+#include <cxxopts.hpp>
+
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace fs = std::filesystem;
+
+namespace {
+
+constexpr int kRoot = 0;
+
+int mpi_rank() {
+    int rank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    return rank;
+}
+
+int mpi_size() {
+    int size = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    return size;
+}
+
+// Build `localities` rows of `test_size` ints (row i filled with start_val + i),
+// flattened into one contiguous send buffer. Used as the scatter source so that
+// rank r receives `test_size` copies of `start_val + r`.
+std::vector<int> generate_matrix(int localities, int test_size, int start_val) {
     std::vector<int> send_data;
-    for (const auto& row : result) {
-        send_data.insert(send_data.end(), row.begin(), row.end());
+    send_data.reserve(static_cast<std::size_t>(localities) * test_size);
+    for (int i = 0; i < localities; ++i) {
+        send_data.insert(send_data.end(), test_size, start_val + i);
     }
     return send_data;
 }
 
-void create_parent_dir(std::filesystem::path file_path)
-{
-    // Create parent directory if does not exist
-    std::filesystem::path dir_path = file_path.parent_path();
-    if (!std::filesystem::exists(dir_path))
-    {
-        if (std::filesystem::create_directories(dir_path))
-        {
-            std::cout << "Directory created: " << dir_path << "\n";
-        }
-        else
-        {
-            throw std::runtime_error("Failed to create directory: " + dir_path.string());
-        }
-    }
-}
+struct Stats {
+    double mean = 0.0;
+    double variance = 0.0;  // population variance
+};
 
-std::pair<double,double> compute_moments(std::vector<double> data)
-{
-    // Compute mean
+Stats compute_moments(const std::vector<double>& data) {
+    if (data.empty()) {
+        return {};
+    }
     double sum = 0.0;
     for (double x : data) {
         sum += x;
     }
-    double mean = sum / data.size();
+    const double mean = sum / static_cast<double>(data.size());
 
-    // Compute variance (population variance)
-    double varianceSum = 0.0;
+    double variance_sum = 0.0;
     for (double x : data) {
-        varianceSum += (x - mean) * (x - mean);
+        variance_sum += (x - mean) * (x - mean);
     }
-    double variance = varianceSum / data.size();
-
-    return std::make_pair(mean, variance);
+    return {mean, variance_sum / static_cast<double>(data.size())};
 }
 
-void write_to_file(std::string collective, std::string modules, int algorithm, std::size_t num_ranks, int rpn, int iterations, int size, std::vector<double> result){
-    // Compute mean and variance
-    auto moments = compute_moments(result);
-    // Compute nodes
-    int nodes = num_ranks / rpn;
-    // Print info
-    std::cout
-    << "\nCollective:        " << collective   << '\n'
-    << "Module:            " << modules      << '\n'
-    << "Algorithm:         " << algorithm    << '\n'
-    << "Nodes:             " << nodes        << '\n'
-    << "Ranks:             " << num_ranks    << '\n'
-    << "Ranks/node         " << rpn          << '\n'
-    << "Size/Rank:         " << size         << '\n'
-    << "Iterations:        " << iterations   << '\n'
-    << "Mean runtime:      " << moments.first  << '\n'
-    << "Variance:          " << moments.second << '\n'
-    << std::flush;
-
-    // Create directory
-    std::string runtime_file_path = "result/mpi/" + collective + "/runtimes_" + collective + "_mpi.txt";
-    create_parent_dir(runtime_file_path);
-
-    // Add header if necessary
-    const std::string header = "collective;module;algorithm;nodes;ranks;rpn;size;iterations;mean;variance\n";
-    // Read existing content
-    std::ifstream infile(runtime_file_path);
-    std::stringstream buffer;
-    buffer << infile.rdbuf();
-    std::string contents = buffer.str();
-    infile.close();
-    // Only append if header not present
-    if (contents.find(header) == std::string::npos) {
-        std::ofstream outfile(runtime_file_path, std::ios_base::app);
-        outfile << header;
-        outfile.close();
+void create_parent_dir(const fs::path& file_path) {
+    const fs::path dir = file_path.parent_path();
+    if (dir.empty() || fs::exists(dir)) {
+        return;
     }
-
-    // Add runtimes
-    std::ofstream outfile;
-    outfile.open(runtime_file_path, std::ios_base::app);
-    outfile << collective << ";"
-            << modules << ";"
-            << algorithm << ";"
-            << nodes << ";"
-            << num_ranks << ";"
-            << rpn << ";"
-            << size << ";"
-            << iterations << ";"
-            << moments.first << ";"
-            << moments.second << "\n";
-    outfile.close();
+    std::error_code ec;
+    if (!fs::create_directories(dir, ec)) {
+        throw std::runtime_error("Failed to create directory: " + dir.string() +
+                                 " (" + ec.message() + ")");
+    }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////
-void test_scatter(int rpn, int iterations, int test_size, std::string modules, int algorithm)
-{
-    // Get parameters
-    int this_rank, num_ranks;
-    MPI_Comm_rank(MPI_COMM_WORLD, &this_rank); // Get rank
-    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks); // Get size
-    // Result vector 
-    std::vector<double> result(iterations, 0.0);
-    // Data
-    std::vector<int> send_data;
-    std::vector<int> recv_data(test_size,0.0);
+void write_to_file(const std::string& collective, const std::string& module,
+                   int algorithm, int num_ranks, int rpn, int iterations, int size,
+                   const std::vector<double>& result) {
+    const Stats stats = compute_moments(result);
+    const int nodes = (rpn > 0) ? num_ranks / rpn : num_ranks;
 
-    for (std::size_t i = 0; i != iterations; ++i)
-    {
-        double t_before, t_after;
-        if (this_rank == 0)
-        {
-            send_data = generateMatrix(num_ranks, test_size, 42 + i);
-        }
+    std::cout << "\nCollective:        " << collective
+              << "\nModule:            " << module
+              << "\nAlgorithm:         " << algorithm
+              << "\nNodes:             " << nodes
+              << "\nRanks:             " << num_ranks
+              << "\nRanks/node:        " << rpn
+              << "\nSize/Rank:         " << size
+              << "\nIterations:        " << iterations
+              << "\nMean runtime:      " << stats.mean
+              << "\nVariance:          " << stats.variance << '\n'
+              << std::flush;
 
-        // Time collective
-        t_before = MPI_Wtime();
-        MPI_Scatter(send_data.data(), test_size, MPI_INT, recv_data.data(), test_size, MPI_INT, 0, MPI_COMM_WORLD);
-        MPI_Barrier(MPI_COMM_WORLD);
-        t_after = MPI_Wtime(); 
-        // Write runtime into vector
-        if(this_rank == 0)
-        {
-            result[i] = t_after - t_before;
-        }
+    const fs::path out_path = fs::path("result") / "mpi" / collective /
+                              ("runtimes_" + collective + "_mpi.txt");
+    create_parent_dir(out_path);
 
-        // Check for correctness
-        for (int check : recv_data)
-        {
-            if( 42 + i + this_rank != check)
-            {
-                std::cout << "ERROR with calculating Scatter with testsize " << test_size << " and " << num_ranks <<" ranks\n";
+    static const std::string header =
+        "collective;module;algorithm;nodes;ranks;rpn;size;iterations;mean;variance\n";
+
+    // Write the header only once, when the file is new or empty.
+    bool need_header = true;
+    if (std::ifstream in{out_path}; in.good()) {
+        need_header = (in.peek() == std::ifstream::traits_type::eof());
+    }
+
+    std::ofstream out(out_path, std::ios_base::app);
+    if (!out) {
+        throw std::runtime_error("Failed to open output file: " + out_path.string());
+    }
+    if (need_header) {
+        out << header;
+    }
+    out << collective << ';' << module << ';' << algorithm << ';' << nodes << ';'
+        << num_ranks << ';' << rpn << ';' << size << ';' << iterations << ';'
+        << stats.mean << ';' << stats.variance << '\n';
+}
+
+// Shared driver for all collectives: runs `iterations` timed rounds and records
+// the result on the root rank. Each collective supplies:
+//   prepare(i)    - untimed per-iteration buffer setup
+//   collective()  - the timed MPI call
+//   barrier       - whether to MPI_Barrier inside the timed region
+//   check(i)      - correctness validation
+struct CollectiveBench {
+    std::string name;
+    std::string module;
+    int algorithm = 0;
+    int rpn = 16;
+    int iterations = 10;
+    int test_size = 1;
+
+    template <typename Prepare, typename Collective, typename Check>
+    void run(Prepare prepare, Collective collective, bool barrier, Check check) const {
+        const int rank = mpi_rank();
+        const int size = mpi_size();
+        std::vector<double> result(static_cast<std::size_t>(std::max(iterations, 0)), 0.0);
+
+        for (int i = 0; i < iterations; ++i) {
+            prepare(i);
+
+            const double t_before = MPI_Wtime();
+            collective();
+            if (barrier) {
+                MPI_Barrier(MPI_COMM_WORLD);
             }
-        }
-    }
+            const double t_after = MPI_Wtime();
 
-    if (this_rank == 0)
-    {
-        write_to_file("scatter", modules, algorithm, num_ranks, rpn, iterations, test_size, result);
-    }
-}
-
-void test_broadcast(int rpn, int iterations, int test_size, std::string modules, int algorithm)
-{
-    // Get parameters
-    int this_rank, num_ranks;
-    MPI_Comm_rank(MPI_COMM_WORLD, &this_rank); // Get rank
-    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks); // Get size
-    // Result vector
-    std::vector<double> result(iterations, 0.0);
-    // Data
-    std::vector<int> send_data(test_size, 0.0);
-
-    for (std::size_t i = 0; i != iterations; ++i)
-    {
-        double t_before, t_after;
-        if (this_rank == 0)
-        {
-            send_data = std::vector<int>(test_size, i);
+            if (rank == kRoot) {
+                result[static_cast<std::size_t>(i)] = t_after - t_before;
+            }
+            check(i);
         }
 
-        // Time collective
-        t_before = MPI_Wtime();
-        MPI_Bcast(send_data.data(), test_size, MPI_INT, 0, MPI_COMM_WORLD);
-        t_after = MPI_Wtime(); 
-        // Write runtime into vector
-        if(this_rank == 0)
-        {
-            result[i] = t_after - t_before;
-        }
-
-        // Check for correctness
-        if(i != send_data[0])
-        {
-            std::cout << "ERROR with calculating Broadcast with testsize " << test_size << " and " << num_ranks <<" ranks\n";
+        if (rank == kRoot) {
+            write_to_file(name, module, algorithm, size, rpn, iterations, test_size,
+                          result);
         }
     }
+};
 
-    if (this_rank == 0)
-    {
-        write_to_file("broadcast", modules, algorithm, num_ranks, rpn, iterations, test_size, result);
-    }
-}
-
-void test_reduce(int rpn, int iterations, int test_size, std::string modules, int algorithm)
-{
-    // Get parameters
-    int this_rank, num_ranks;
-    MPI_Comm_rank(MPI_COMM_WORLD, &this_rank); // Get rank
-    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks); // Get size
-    // Result vector 
-    std::vector<double> result(iterations, 0.0);
-    // Data
+void test_scatter(const CollectiveBench& cfg) {
+    const int rank = mpi_rank();
+    const int size = mpi_size();
     std::vector<int> send_data;
-    std::vector<int> recv_data(test_size);
+    std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size), 0);
 
-    for (std::size_t i = 0; i != iterations; ++i)
-    {
-        double t_before, t_after;
-        send_data = std::vector<int>(test_size, i);
-
-        // Time collective
-        t_before = MPI_Wtime();
-        MPI_Reduce(send_data.data(), recv_data.data(), test_size, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Barrier(MPI_COMM_WORLD);
-        t_after = MPI_Wtime(); 
-        // Write runtime into vector
-        if(this_rank == 0)
-        {
-            result[i] = t_after - t_before;
-        }
-
-        // Check for correctness
-        if(this_rank == 0 && num_ranks * i != recv_data[0])
-        {
-            std::cout << "ERROR with calculating Reduce with testsize " << test_size << " and " << num_ranks <<" ranks\n";
-        }
-    }
-
-    if (this_rank == 0)
-    {
-        write_to_file("reduce", modules, algorithm, num_ranks, rpn, iterations, test_size, result);
-    }
-}
-
-void test_gather(int rpn, int iterations, int test_size, std::string modules, int algorithm)
-{
-    // Get parameters
-    int this_rank, num_ranks;
-    MPI_Comm_rank(MPI_COMM_WORLD, &this_rank); // Get rank
-    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks); // Get size
-    // Result vector
-    std::vector<double> result(iterations, 0.0);
-    // Data
-    std::vector<int> send_data;
-    std::vector<int> recv_data(test_size*num_ranks);
-
-    for (std::size_t i = 0; i != iterations; ++i)
-    {
-        double t_before, t_after;
-        send_data = std::vector<int>(test_size, this_rank);
-        // Time collective
-        t_before = MPI_Wtime();
-        MPI_Gather(send_data.data(), test_size, MPI_INT, recv_data.data(),test_size, MPI_INT, 0, MPI_COMM_WORLD);
-        MPI_Barrier(MPI_COMM_WORLD);
-        t_after = MPI_Wtime(); 
-        // Check for correctness
-        if(this_rank == 0)
-        {
-            for (int j  = 0; j < num_ranks; j++)
-            {
-                if (j != recv_data[j*test_size])
-                {
-                    std::cout << "ERROR with calculating Gather with testsize " << test_size << " and " << num_ranks <<" rank\n";
+    cfg.run(
+        [&](int i) {
+            if (rank == kRoot) {
+                send_data = generate_matrix(size, cfg.test_size, 42 + i);
+            }
+        },
+        [&] {
+            MPI_Scatter(send_data.data(), cfg.test_size, MPI_INT, recv_data.data(),
+                        cfg.test_size, MPI_INT, kRoot, MPI_COMM_WORLD);
+        },
+        /*barrier=*/true,
+        [&](int i) {
+            for (int value : recv_data) {
+                if (value != 42 + i + rank) {
+                    std::cerr << "ERROR: scatter mismatch (size " << cfg.test_size
+                              << ", ranks " << size << ")\n";
+                    break;
                 }
             }
-        }
-        // Write runtime into vector
-        result[i] = t_after - t_before;
-    }
-
-    if (this_rank == 0)
-    {
-        write_to_file("gather", modules, algorithm, num_ranks, rpn, iterations, test_size, result);
-    }
+        });
 }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void test_broadcast(const CollectiveBench& cfg) {
+    const int rank = mpi_rank();
+    const int size = mpi_size();
+    std::vector<int> data(static_cast<std::size_t>(cfg.test_size), 0);
+
+    cfg.run(
+        [&](int i) {
+            if (rank == kRoot) {
+                std::fill(data.begin(), data.end(), i);
+            }
+        },
+        [&] { MPI_Bcast(data.data(), cfg.test_size, MPI_INT, kRoot, MPI_COMM_WORLD); },
+        /*barrier=*/false,
+        [&](int i) {
+            if (!data.empty() && data[0] != i) {
+                std::cerr << "ERROR: broadcast mismatch (size " << cfg.test_size
+                          << ", ranks " << size << ")\n";
+            }
+        });
+}
+
+void test_reduce(const CollectiveBench& cfg) {
+    const int rank = mpi_rank();
+    const int size = mpi_size();
+    std::vector<int> send_data(static_cast<std::size_t>(cfg.test_size), 0);
+    std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size), 0);
+
+    cfg.run(
+        [&](int i) { std::fill(send_data.begin(), send_data.end(), i); },
+        [&] {
+            MPI_Reduce(send_data.data(), recv_data.data(), cfg.test_size, MPI_INT,
+                       MPI_SUM, kRoot, MPI_COMM_WORLD);
+        },
+        /*barrier=*/true,
+        [&](int i) {
+            if (rank == kRoot && !recv_data.empty() && recv_data[0] != size * i) {
+                std::cerr << "ERROR: reduce mismatch (size " << cfg.test_size
+                          << ", ranks " << size << ")\n";
+            }
+        });
+}
+
+void test_gather(const CollectiveBench& cfg) {
+    const int rank = mpi_rank();
+    const int size = mpi_size();
+    std::vector<int> send_data(static_cast<std::size_t>(cfg.test_size), rank);
+    std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size) * size, 0);
+
+    cfg.run(
+        [&](int) { std::fill(send_data.begin(), send_data.end(), rank); },
+        [&] {
+            MPI_Gather(send_data.data(), cfg.test_size, MPI_INT, recv_data.data(),
+                       cfg.test_size, MPI_INT, kRoot, MPI_COMM_WORLD);
+        },
+        /*barrier=*/true,
+        [&](int) {
+            if (rank != kRoot) {
+                return;
+            }
+            for (int j = 0; j < size; ++j) {
+                if (recv_data[static_cast<std::size_t>(j) * cfg.test_size] != j) {
+                    std::cerr << "ERROR: gather mismatch (size " << cfg.test_size
+                              << ", ranks " << size << ")\n";
+                    break;
+                }
+            }
+        });
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
-    MPI_Init(&argc, &argv); // Initialize MPI
-    cxxopts::Options options("MPI Collective Benchmark");
+    MPI_Init(&argc, &argv);
+
+    cxxopts::Options options("benchmark_collectives_mpi",
+                             "MPI reference benchmark for collective operations");
     options.add_options()
-        ("rpn", "Number of localities per Node", cxxopts::value<int>()->default_value("16"))
-        ("algorithm", "Algorithm of the Operation", cxxopts::value<int>()->default_value("0"))
-        ("m,module", "What collective module will be used.", cxxopts::value<std::string>()->default_value("tuned"))
-        ("iterations", "Number of iterations", cxxopts::value<int>()->default_value("0"))
-        ("t,test_size", "Test Size for each Message.", cxxopts::value<int>()->default_value("1"))
-        ("operation", "What collective operation will be used.", cxxopts::value<std::string>()->default_value("scatter"));
-    auto result = options.parse(argc, argv);
-    int rpn = result["rpn"].as<int>();
-    int algorithm = result["algorithm"].as<int>();
-    std::string modules = result["module"].as<std::string>();
-    int iterations = result["iterations"].as<int>();
-    int test_size = result["test_size"].as<int>();
-    std::string operation = result["operation"].as<std::string>();
+        ("rpn", "Number of ranks per node",
+         cxxopts::value<int>()->default_value("16"))
+        ("algorithm", "Algorithm id for the operation (recorded in output)",
+         cxxopts::value<int>()->default_value("0"))
+        ("m,module", "Collective module label recorded in output",
+         cxxopts::value<std::string>()->default_value("tuned"))
+        ("iterations", "Number of timed iterations",
+         cxxopts::value<int>()->default_value("10"))
+        ("t,test_size", "Number of ints sent per rank",
+         cxxopts::value<int>()->default_value("1"))
+        ("operation", "Collective to run: broadcast|reduce|scatter|gather",
+         cxxopts::value<std::string>()->default_value("scatter"))
+        ("h,help", "Print usage");
 
-    // Write header
-    std::vector<double> data;
-    // Run test
-    if (operation == "scatter")
-    {
-        test_scatter(rpn, iterations, test_size, modules, algorithm);
-    }
-    else if (operation == "reduce")
-    {
-        test_reduce(rpn, iterations, test_size, modules, algorithm);
-    }
-    else if (operation == "broadcast")
-    {
-        test_broadcast(rpn, iterations, test_size, modules, algorithm);
-    }
-    else if (operation == "gather")
-    {
-        test_gather(rpn, iterations, test_size, modules, algorithm);
+    int exit_code = 0;
+    try {
+        const auto parsed = options.parse(argc, argv);
+        if (parsed.count("help") != 0u) {
+            if (mpi_rank() == kRoot) {
+                std::cout << options.help() << '\n';
+            }
+            MPI_Finalize();
+            return 0;
+        }
+
+        CollectiveBench cfg;
+        cfg.rpn = parsed["rpn"].as<int>();
+        cfg.algorithm = parsed["algorithm"].as<int>();
+        cfg.module = parsed["module"].as<std::string>();
+        cfg.iterations = parsed["iterations"].as<int>();
+        cfg.test_size = parsed["test_size"].as<int>();
+        cfg.name = parsed["operation"].as<std::string>();
+
+        if (cfg.name == "scatter") {
+            test_scatter(cfg);
+        } else if (cfg.name == "reduce") {
+            test_reduce(cfg);
+        } else if (cfg.name == "broadcast") {
+            test_broadcast(cfg);
+        } else if (cfg.name == "gather") {
+            test_gather(cfg);
+        } else {
+            if (mpi_rank() == kRoot) {
+                std::cerr << "Unknown operation: " << cfg.name
+                          << " (expected broadcast|reduce|scatter|gather)\n";
+            }
+            exit_code = 1;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << '\n';
+        exit_code = 1;
     }
 
-    MPI_Finalize(); // Finalize MPI
-    return 0;
+    MPI_Finalize();
+    return exit_code;
 }

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-mpi-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake libopenmpi-dev openmpi-bin
+
+      - name: Configure
+        run: cmake -S mpi -B build/mpi -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build/mpi -j
+
+      - name: Smoke test (run each collective on 2 ranks)
+        run: |
+          bin=build/mpi/bin/benchmark_collectives_mpi
+          for op in broadcast reduce scatter gather; do
+            echo "::group::$op"
+            mpirun --oversubscribe -np 2 "$bin" \
+              --operation="$op" --test_size=16 --iterations=5 --rpn=2
+            echo "::endgroup::"
+          done
+
+      - name: Check results were written
+        run: |
+          test -f result/mpi/broadcast/runtimes_broadcast_mpi.txt
+          test -f result/mpi/reduce/runtimes_reduce_mpi.txt
+          test -f result/mpi/scatter/runtimes_scatter_mpi.txt
+          test -f result/mpi/gather/runtimes_gather_mpi.txt
+          cat result/mpi/*/runtimes_*_mpi.txt

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -ex
+# Clone, configure and build HPX with the TCP/MPI/LCI parcelports, then build
+# the collectives benchmark target.
+set -exo pipefail
 # Load compiler and dependencies
 module load gcc/14.2.0
 module load openmpi/5.0.5
@@ -15,9 +17,14 @@ TCP=ON
 MPI=ON
 LCI=ON
 
-ROOT=$(pwd)
+# Optional build flags (default to empty if unset).
+CXXFLAGS="${CXXFLAGS:-}"
+LDCXXFLAGS="${LDCXXFLAGS:-}"
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIR_SRC=${ROOT}/hpx
 DIR_BUILD=${ROOT}/build/hpx
+DIR_INSTALL=${DIR_INSTALL:-${DIR_BUILD}/install}
 
 DOWNLOAD_URL="git@github.com:STEllAR-GROUP/hpx.git"
 #DOWNLOAD_URL="https://github.com/STEllAR-GROUP/hpx.git"
