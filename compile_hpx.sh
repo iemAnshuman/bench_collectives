@@ -3,12 +3,20 @@
 # the collectives benchmark target.
 set -exo pipefail
 # Load compiler and dependencies
-#module load gcc/14.2.0
-#module load openmpi/5.0.5
-spack load gcc@14.3.0
-module load hwloc
-#module unload intel-mpi/2021.5.1
-#module load openmpi/4.1.6/intel-2021.5.0
+case "$(hostname)" in
+    rostam1|medusa*)
+        module load gcc/14.2.0
+        module load openmpi/5.0.5
+        ;;
+    qbd*)
+        spack load gcc@14.3.0
+        module load hwloc
+        ;;
+    *)
+        echo "ERROR: unknown host $(hostname), cannot load modules" >&2
+        exit 1
+        ;;
+esac
 
 # Configuration
 export CC=gcc

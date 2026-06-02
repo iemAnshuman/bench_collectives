@@ -9,8 +9,18 @@
 #SBATCH --error=logs/error_%j.log        # Error log file
 set -uo pipefail
 
-#module load gcc/14.2.0
-spack load gcc@14.3.0
+case "$(hostname)" in
+    rostam1|medusa*)
+        module load gcc/14.2.0
+        ;;
+    qbd*)
+        spack load gcc@14.3.0
+        ;;
+    *)
+        echo "ERROR: unknown host $(hostname), cannot load modules" >&2
+        exit 1
+        ;;
+esac
 parcelport=mpi # one of: tcp, mpi, lci
 executable="$(pwd)/build/hpx/bin/benchmark_collectives_test"
 iterations=10

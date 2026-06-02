@@ -4,10 +4,19 @@
 set -euo pipefail
 
 # Load dependencies
-#module load gcc/14.2.0
-#module load openmpi/5.0.5
-
-spack load gcc@14.3.0
+case "$(hostname)" in
+    rostam1|medusa*)
+        module load gcc/14.2.0
+        module load openmpi/5.0.5
+        ;;
+    qbd*)
+        spack load gcc@14.3.0
+        ;;
+    *)
+        echo "ERROR: unknown host $(hostname), cannot load modules" >&2
+        exit 1
+        ;;
+esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${ROOT}/mpi"
