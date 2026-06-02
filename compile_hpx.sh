@@ -74,7 +74,6 @@ if [[ ! -d ${DIR_BUILD}/CMakeFiles ]]; then
             -DHPX_WITH_PARCELPORT_MPI=${MPI} \
             -DHPX_WITH_PARCELPORT_LCI=${LCI} \
             -DHPX_WITH_FETCH_LCI=${LCI} \
-            -DHPX_WITH_LCI_TAG=master \
             -DHPX_WITH_FETCH_BOOST=ON \
             -DHPX_WITH_FETCH_HWLOC=OFF \
             -DHPX_WITH_FETCH_ASIO=ON
