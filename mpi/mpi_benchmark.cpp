@@ -135,6 +135,9 @@ void write_to_file(const std::string& collective, const std::string& module,
 //   collective()  - the timed MPI call
 //   barrier       - whether to MPI_Barrier inside the timed region
 //   check(i)      - correctness validation
+//   max_time      - if true, reduce elapsed times with MPI_MAX across all ranks
+//                   so root records the slowest rank's latency (use for symmetric
+//                   collectives: all_gather, all_reduce, all_to_all)
 struct CollectiveBench {
     std::string name;
     std::string module;
@@ -145,7 +148,8 @@ struct CollectiveBench {
     int test_size = 1;
 
     template <typename Prepare, typename Collective, typename Check>
-    void run(Prepare prepare, Collective collective, bool barrier, Check check) const {
+    void run(Prepare prepare, Collective collective, bool barrier, Check check,
+             bool max_time = false) const {
         const int rank = mpi_rank();
         const int size = mpi_size();
         std::vector<double> result(static_cast<std::size_t>(std::max(iterations, 0)), 0.0);
@@ -171,10 +175,20 @@ struct CollectiveBench {
             if (barrier) {
                 MPI_Barrier(MPI_COMM_WORLD);
             }
-            const double t_after = MPI_Wtime();
+            const double t_elapsed = MPI_Wtime() - t_before;
+
+            // For symmetric collectives every rank participates equally; the
+            // slowest rank determines the effective completion time. Reduce
+            // with MPI_MAX so root records the true worst-case latency.
+            // For asymmetric collectives root's local time is sufficient.
+            double t_record = t_elapsed;
+            if (max_time) {
+                MPI_Reduce(rank == kRoot ? MPI_IN_PLACE : &t_elapsed, &t_record,
+                           1, MPI_DOUBLE, MPI_MAX, kRoot, MPI_COMM_WORLD);
+            }
 
             if (rank == kRoot) {
-                result[static_cast<std::size_t>(i)] = t_after - t_before;
+                result[static_cast<std::size_t>(i)] = t_record;
             }
             check(i);
         }
@@ -304,7 +318,8 @@ void test_all_gather(const CollectiveBench& cfg) {
                     break;
                 }
             }
-        });
+        },
+        /*max_time=*/true);
 }
 
 void test_all_reduce(const CollectiveBench& cfg) {
@@ -324,7 +339,8 @@ void test_all_reduce(const CollectiveBench& cfg) {
                 std::cerr << "ERROR: all_reduce mismatch (size " << cfg.test_size
                           << ", ranks " << size << ")\n";
             }
-        });
+        },
+        /*max_time=*/true);
 }
 
 void test_all_to_all(const CollectiveBench& cfg) {
@@ -355,7 +371,8 @@ void test_all_to_all(const CollectiveBench& cfg) {
                     break;
                 }
             }
-        });
+        },
+        /*max_time=*/true);
 }
 
 }  // namespace
