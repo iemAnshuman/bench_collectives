@@ -3,7 +3,7 @@
 // Times MPI_Bcast, MPI_Reduce, MPI_Scatter, MPI_Gather, MPI_Allgather,
 // MPI_Allreduce, and MPI_Alltoall over a configurable message size and
 // iteration count, validates correctness, and appends per-run statistics
-// (mean, variance, min, max, median) to
+// (mean, variance, stddev, min, max, median) to
 // result/mpi/<collective>/runtimes_<collective>_mpi.txt.
 //
 // All collectives share a single timing/recording harness (CollectiveBench::run);
@@ -17,6 +17,7 @@
 #include <cxxopts.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -45,6 +46,7 @@ int mpi_size() {
 struct Stats {
     double mean = 0.0;
     double variance = 0.0;  // population variance
+    double stddev = 0.0;    // population standard deviation
     double min = 0.0;
     double max = 0.0;
     double median = 0.0;
@@ -67,6 +69,7 @@ Stats compute_stats(std::vector<double> data) {
         variance_sum += (x - mean) * (x - mean);
     }
     const double variance = variance_sum / static_cast<double>(data.size());
+    const double stddev = std::sqrt(variance);
 
     // Min, max, median — data is taken by value so sorting in place is safe.
     std::sort(data.begin(), data.end());
@@ -77,7 +80,7 @@ Stats compute_stats(std::vector<double> data) {
         ? data[n / 2]
         : (data[n / 2 - 1] + data[n / 2]) / 2.0;
 
-    return {mean, variance, min, max, median};
+    return {mean, variance, stddev, min, max, median};
 }
 
 void create_parent_dir(const fs::path& file_path) {
@@ -109,6 +112,7 @@ void write_to_file(const std::string& collective, const std::string& module,
               << "\nIterations:        " << iterations
               << "\nMean runtime:      " << stats.mean
               << "\nVariance:          " << stats.variance
+              << "\nStd deviation:     " << stats.stddev
               << "\nMin runtime:       " << stats.min
               << "\nMax runtime:       " << stats.max
               << "\nMedian runtime:    " << stats.median << '\n'
@@ -119,7 +123,7 @@ void write_to_file(const std::string& collective, const std::string& module,
     create_parent_dir(out_path);
 
     static const std::string header =
-        "collective;module;algorithm;nodes;ranks;rpn;size;warmup;iterations;mean;variance;min;max;median\n";
+        "collective;module;algorithm;nodes;ranks;rpn;size;warmup;iterations;mean;variance;stddev;min;max;median\n";
 
     // Write the header only once, when the file is new or empty.
     bool need_header = true;
@@ -137,7 +141,8 @@ void write_to_file(const std::string& collective, const std::string& module,
     out << collective << ';' << module << ';' << algorithm << ';' << nodes << ';'
         << num_ranks << ';' << rpn << ';' << size << ';' << warmup << ';'
         << iterations << ';' << stats.mean << ';' << stats.variance << ';'
-        << stats.min << ';' << stats.max << ';' << stats.median << '\n';
+        << stats.stddev << ';' << stats.min << ';' << stats.max << ';'
+        << stats.median << '\n';
 }
 
 // Shared driver for all collectives: runs `iterations` timed rounds and records
