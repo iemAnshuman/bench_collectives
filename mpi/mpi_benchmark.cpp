@@ -221,8 +221,9 @@ void test_scatter(const CollectiveBench& cfg) {
         [&](int i) {
             if (rank == kRoot) {
                 for (int j = 0; j < size; ++j) {
-                    std::fill(send_data.begin() + j * cfg.test_size,
-                              send_data.begin() + (j + 1) * cfg.test_size,
+                    const auto block = static_cast<std::ptrdiff_t>(j) * cfg.test_size;
+                    std::fill(send_data.begin() + block,
+                              send_data.begin() + block + cfg.test_size,
                               42 + i + j);
                 }
             }
@@ -359,8 +360,9 @@ void test_all_to_all(const CollectiveBench& cfg) {
     cfg.run(
         [&](int i) {
             for (int j = 0; j < size; ++j) {
-                std::fill(send_data.begin() + j * cfg.test_size,
-                          send_data.begin() + (j + 1) * cfg.test_size,
+                const auto block = static_cast<std::ptrdiff_t>(j) * cfg.test_size;
+                std::fill(send_data.begin() + block,
+                          send_data.begin() + block + cfg.test_size,
                           rank + j + i);
             }
         },
