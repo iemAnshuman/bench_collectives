@@ -86,8 +86,8 @@ void create_parent_dir(const fs::path& file_path) {
 }
 
 void write_to_file(const std::string& collective, const std::string& module,
-                   int algorithm, int num_ranks, int rpn, int iterations, int size,
-                   const std::vector<double>& result) {
+                   int algorithm, int num_ranks, int rpn, int warmup,
+                   int iterations, int size, const std::vector<double>& result) {
     const Stats stats = compute_moments(result);
     const int nodes = (rpn > 0) ? num_ranks / rpn : num_ranks;
 
@@ -98,6 +98,7 @@ void write_to_file(const std::string& collective, const std::string& module,
               << "\nRanks:             " << num_ranks
               << "\nRanks/node:        " << rpn
               << "\nSize/Rank:         " << size
+              << "\nWarmup iterations: " << warmup
               << "\nIterations:        " << iterations
               << "\nMean runtime:      " << stats.mean
               << "\nVariance:          " << stats.variance << '\n'
@@ -108,7 +109,7 @@ void write_to_file(const std::string& collective, const std::string& module,
     create_parent_dir(out_path);
 
     static const std::string header =
-        "collective;module;algorithm;nodes;ranks;rpn;size;iterations;mean;variance\n";
+        "collective;module;algorithm;nodes;ranks;rpn;size;warmup;iterations;mean;variance\n";
 
     // Write the header only once, when the file is new or empty.
     bool need_header = true;
@@ -124,8 +125,8 @@ void write_to_file(const std::string& collective, const std::string& module,
         out << header;
     }
     out << collective << ';' << module << ';' << algorithm << ';' << nodes << ';'
-        << num_ranks << ';' << rpn << ';' << size << ';' << iterations << ';'
-        << stats.mean << ';' << stats.variance << '\n';
+        << num_ranks << ';' << rpn << ';' << size << ';' << warmup << ';'
+        << iterations << ';' << stats.mean << ';' << stats.variance << '\n';
 }
 
 // Shared driver for all collectives: runs `iterations` timed rounds and records
@@ -140,6 +141,7 @@ struct CollectiveBench {
     int algorithm = 0;
     int rpn = 16;
     int iterations = 10;
+    int warmup = 3;
     int test_size = 1;
 
     template <typename Prepare, typename Collective, typename Check>
@@ -147,6 +149,17 @@ struct CollectiveBench {
         const int rank = mpi_rank();
         const int size = mpi_size();
         std::vector<double> result(static_cast<std::size_t>(std::max(iterations, 0)), 0.0);
+
+        // Untimed warmup — allows MPI to initialise internal buffers and
+        // routes so that iteration 0 of the timed loop is not an outlier.
+        for (int i = 0; i < warmup; ++i) {
+            prepare(i);
+            MPI_Barrier(MPI_COMM_WORLD);
+            collective();
+            if (barrier) {
+                MPI_Barrier(MPI_COMM_WORLD);
+            }
+        }
 
         for (int i = 0; i < iterations; ++i) {
             prepare(i);
@@ -167,8 +180,8 @@ struct CollectiveBench {
         }
 
         if (rank == kRoot) {
-            write_to_file(name, module, algorithm, size, rpn, iterations, test_size,
-                          result);
+            write_to_file(name, module, algorithm, size, rpn, warmup, iterations,
+                          test_size, result);
         }
     }
 };
@@ -361,6 +374,8 @@ int main(int argc, char** argv) {
          cxxopts::value<std::string>()->default_value("tuned"))
         ("iterations", "Number of timed iterations",
          cxxopts::value<int>()->default_value("10"))
+        ("warmup_iterations", "Number of untimed warmup iterations",
+         cxxopts::value<int>()->default_value("3"))
         ("t,test_size", "Number of ints sent per rank",
          cxxopts::value<int>()->default_value("1"))
         ("operation", "Collective to run: broadcast|reduce|scatter|gather|all_gather|all_reduce|all_to_all",
@@ -383,6 +398,7 @@ int main(int argc, char** argv) {
         cfg.algorithm = parsed["algorithm"].as<int>();
         cfg.module = parsed["module"].as<std::string>();
         cfg.iterations = parsed["iterations"].as<int>();
+        cfg.warmup = parsed["warmup_iterations"].as<int>();
         cfg.test_size = parsed["test_size"].as<int>();
         cfg.name = parsed["operation"].as<std::string>();
 
