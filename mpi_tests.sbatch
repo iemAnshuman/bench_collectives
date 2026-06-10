@@ -24,7 +24,7 @@ case "$(hostname)" in
 esac
 
 executable="$(pwd)/build/mpi/bin/benchmark_collectives_mpi"
-pairs=("broadcast 1" "reduce 1" "scatter 1" "gather 1")
+pairs=("broadcast 1" "reduce 1" "scatter 1" "gather 1" "all_gather 1" "all_reduce 1" "all_to_all 1")
 export PMIX_MCA_gds=hash
 partition=workq
 iterations=10
@@ -52,7 +52,8 @@ execute_task() {
                         --export=ALL,OMPI_MCA_coll_tuned_use_dynamic_rules=1,OMPI_MCA_coll_tuned_${mca_op}_algorithm=$i \
                         -N "$node" --ntasks-per-node "$rpn" -c 2 \
                         "$executable" --algorithm="$i" --rpn="$rpn" --operation="$task_name" \
-                        --test_size="$test_size" --iterations="$iterations"
+                        --test_size="$test_size" --iterations="$iterations" \
+                        --warmup_iterations=3
                 done
             done
         done

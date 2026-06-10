@@ -1,9 +1,10 @@
 // MPI reference benchmark for collective operations.
 //
-// Times MPI_Bcast / MPI_Reduce / MPI_Scatter / MPI_Gather / MPI_Allgather /
-// MPI_Allreduce / MPI_Alltoall over a configurable
-// message size and iteration count, validates correctness, and appends the
-// per-run mean/variance/min/max/median to result/mpi/<collective>/runtimes_<collective>_mpi.txt.
+// Times MPI_Bcast, MPI_Reduce, MPI_Scatter, MPI_Gather, MPI_Allgather,
+// MPI_Allreduce, and MPI_Alltoall over a configurable message size and
+// iteration count, validates correctness, and appends per-run statistics
+// (mean, variance, min, max, median) to
+// result/mpi/<collective>/runtimes_<collective>_mpi.txt.
 //
 // All collectives share a single timing/recording harness (CollectiveBench::run);
 // each collective only supplies its buffer setup, the timed MPI call, and a
