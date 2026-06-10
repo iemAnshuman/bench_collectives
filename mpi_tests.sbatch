@@ -34,12 +34,18 @@ execute_task() {
   local task_name=$1
   local count=$2
 
-  # OpenMPI's tuned component names broadcast as "bcast"; map it so the
-  # OMPI_MCA_coll_tuned_<op>_algorithm parameter actually takes effect.
-  local mca_op=$task_name
-  if [[ $task_name == "broadcast" ]]; then
-    mca_op="bcast"
-  fi
+  # OpenMPI's tuned component uses its own (un-underscored) names for the
+  # OMPI_MCA_coll_tuned_<op>_algorithm parameter. Map our operation names to
+  # them so the algorithm selection actually takes effect; an unmapped name is
+  # silently ignored by OpenMPI.
+  local mca_op
+  case "$task_name" in
+    broadcast)  mca_op="bcast" ;;
+    all_gather) mca_op="allgather" ;;
+    all_reduce) mca_op="allreduce" ;;
+    all_to_all) mca_op="alltoall" ;;
+    *)          mca_op="$task_name" ;;
+  esac
 
   for ((i=0; i<count; i++)); do
     for rpn in 32; do
