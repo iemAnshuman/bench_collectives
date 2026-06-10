@@ -3,7 +3,7 @@
 // Times MPI_Bcast / MPI_Reduce / MPI_Scatter / MPI_Gather / MPI_Allgather /
 // MPI_Allreduce / MPI_Alltoall over a configurable
 // message size and iteration count, validates correctness, and appends the
-// per-run mean/variance to result/mpi/<collective>/runtimes_<collective>_mpi.txt.
+// per-run mean/variance/min/max/median to result/mpi/<collective>/runtimes_<collective>_mpi.txt.
 //
 // All collectives share a single timing/recording harness (CollectiveBench::run);
 // each collective only supplies its buffer setup, the timed MPI call, and a
@@ -37,18 +37,6 @@ int mpi_size() {
     int size = 0;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     return size;
-}
-
-// Build `localities` rows of `test_size` ints (row i filled with start_val + i),
-// flattened into one contiguous send buffer. Used as the scatter source so that
-// rank r receives `test_size` copies of `start_val + r`.
-std::vector<int> generate_matrix(int localities, int test_size, int start_val) {
-    std::vector<int> send_data;
-    send_data.reserve(static_cast<std::size_t>(localities) * test_size);
-    for (int i = 0; i < localities; ++i) {
-        send_data.insert(send_data.end(), test_size, start_val + i);
-    }
-    return send_data;
 }
 
 struct Stats {
@@ -223,13 +211,19 @@ struct CollectiveBench {
 void test_scatter(const CollectiveBench& cfg) {
     const int rank = mpi_rank();
     const int size = mpi_size();
-    std::vector<int> send_data;
+    // Allocate once; prepare() only refills values to avoid per-iteration
+    // heap allocation inside the timed loop.
+    std::vector<int> send_data(static_cast<std::size_t>(size) * cfg.test_size, 0);
     std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size), 0);
 
     cfg.run(
         [&](int i) {
             if (rank == kRoot) {
-                send_data = generate_matrix(size, cfg.test_size, 42 + i);
+                for (int j = 0; j < size; ++j) {
+                    std::fill(send_data.begin() + j * cfg.test_size,
+                              send_data.begin() + (j + 1) * cfg.test_size,
+                              42 + i + j);
+                }
             }
         },
         [&] {
