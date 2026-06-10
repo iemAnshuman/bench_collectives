@@ -163,7 +163,7 @@ struct CollectiveBench {
     int algorithm = 0;
     int rpn = 16;
     int iterations = 10;
-    int warmup = 3;
+    int warmup = 0;  // real default supplied by --warmup_iterations
     int test_size = 1;
 
     template <typename Prepare, typename Collective, typename Check>
