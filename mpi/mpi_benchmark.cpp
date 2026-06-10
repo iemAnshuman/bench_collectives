@@ -151,6 +151,8 @@ struct CollectiveBench {
         for (int i = 0; i < iterations; ++i) {
             prepare(i);
 
+            // Synchronise all ranks before timing to eliminate entry-skew noise.
+            MPI_Barrier(MPI_COMM_WORLD);
             const double t_before = MPI_Wtime();
             collective();
             if (barrier) {
