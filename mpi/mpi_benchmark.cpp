@@ -1,6 +1,7 @@
 // MPI reference benchmark for collective operations.
 //
-// Times MPI_Bcast / MPI_Reduce / MPI_Scatter / MPI_Gather over a configurable
+// Times MPI_Bcast / MPI_Reduce / MPI_Scatter / MPI_Gather / MPI_Allgather /
+// MPI_Allreduce / MPI_Alltoall over a configurable
 // message size and iteration count, validates correctness, and appends the
 // per-run mean/variance to result/mpi/<collective>/runtimes_<collective>_mpi.txt.
 //
@@ -267,6 +268,81 @@ void test_gather(const CollectiveBench& cfg) {
         });
 }
 
+void test_all_gather(const CollectiveBench& cfg) {
+    const int rank = mpi_rank();
+    const int size = mpi_size();
+    std::vector<int> send_data(static_cast<std::size_t>(cfg.test_size), rank);
+    std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size) * size, 0);
+
+    cfg.run(
+        [&](int) { std::fill(send_data.begin(), send_data.end(), rank); },
+        [&] {
+            MPI_Allgather(send_data.data(), cfg.test_size, MPI_INT, recv_data.data(),
+                          cfg.test_size, MPI_INT, MPI_COMM_WORLD);
+        },
+        /*barrier=*/false,
+        [&](int) {
+            for (int j = 0; j < size; ++j) {
+                if (recv_data[static_cast<std::size_t>(j) * cfg.test_size] != j) {
+                    std::cerr << "ERROR: all_gather mismatch (size " << cfg.test_size
+                              << ", ranks " << size << ")\n";
+                    break;
+                }
+            }
+        });
+}
+
+void test_all_reduce(const CollectiveBench& cfg) {
+    const int size = mpi_size();
+    std::vector<int> send_data(static_cast<std::size_t>(cfg.test_size), 0);
+    std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size), 0);
+
+    cfg.run(
+        [&](int i) { std::fill(send_data.begin(), send_data.end(), i); },
+        [&] {
+            MPI_Allreduce(send_data.data(), recv_data.data(), cfg.test_size, MPI_INT,
+                          MPI_SUM, MPI_COMM_WORLD);
+        },
+        /*barrier=*/false,
+        [&](int i) {
+            if (!recv_data.empty() && recv_data[0] != size * i) {
+                std::cerr << "ERROR: all_reduce mismatch (size " << cfg.test_size
+                          << ", ranks " << size << ")\n";
+            }
+        });
+}
+
+void test_all_to_all(const CollectiveBench& cfg) {
+    const int rank = mpi_rank();
+    const int size = mpi_size();
+    std::vector<int> send_data(static_cast<std::size_t>(cfg.test_size) * size, 0);
+    std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size) * size, 0);
+
+    cfg.run(
+        [&](int i) {
+            for (int j = 0; j < size; ++j) {
+                std::fill(send_data.begin() + j * cfg.test_size,
+                          send_data.begin() + (j + 1) * cfg.test_size,
+                          rank + j + i);
+            }
+        },
+        [&] {
+            MPI_Alltoall(send_data.data(), cfg.test_size, MPI_INT, recv_data.data(),
+                         cfg.test_size, MPI_INT, MPI_COMM_WORLD);
+        },
+        /*barrier=*/false,
+        [&](int i) {
+            for (int j = 0; j < size; ++j) {
+                const int expected = j + rank + i;
+                if (recv_data[static_cast<std::size_t>(j) * cfg.test_size] != expected) {
+                    std::cerr << "ERROR: all_to_all mismatch (size " << cfg.test_size
+                              << ", ranks " << size << ")\n";
+                    break;
+                }
+            }
+        });
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -285,7 +361,7 @@ int main(int argc, char** argv) {
          cxxopts::value<int>()->default_value("10"))
         ("t,test_size", "Number of ints sent per rank",
          cxxopts::value<int>()->default_value("1"))
-        ("operation", "Collective to run: broadcast|reduce|scatter|gather",
+        ("operation", "Collective to run: broadcast|reduce|scatter|gather|all_gather|all_reduce|all_to_all",
          cxxopts::value<std::string>()->default_value("scatter"))
         ("h,help", "Print usage");
 
@@ -316,10 +392,16 @@ int main(int argc, char** argv) {
             test_broadcast(cfg);
         } else if (cfg.name == "gather") {
             test_gather(cfg);
+        } else if (cfg.name == "all_gather") {
+            test_all_gather(cfg);
+        } else if (cfg.name == "all_reduce") {
+            test_all_reduce(cfg);
+        } else if (cfg.name == "all_to_all") {
+            test_all_to_all(cfg);
         } else {
             if (mpi_rank() == kRoot) {
                 std::cerr << "Unknown operation: " << cfg.name
-                          << " (expected broadcast|reduce|scatter|gather)\n";
+                          << " (expected broadcast|reduce|scatter|gather|all_gather|all_reduce|all_to_all)\n";
             }
             exit_code = 1;
         }
