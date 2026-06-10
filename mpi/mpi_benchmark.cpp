@@ -54,12 +54,17 @@ std::vector<int> generate_matrix(int localities, int test_size, int start_val) {
 struct Stats {
     double mean = 0.0;
     double variance = 0.0;  // population variance
+    double min = 0.0;
+    double max = 0.0;
+    double median = 0.0;
 };
 
-Stats compute_moments(const std::vector<double>& data) {
+Stats compute_stats(std::vector<double> data) {
     if (data.empty()) {
         return {};
     }
+
+    // Mean and variance.
     double sum = 0.0;
     for (double x : data) {
         sum += x;
@@ -70,7 +75,18 @@ Stats compute_moments(const std::vector<double>& data) {
     for (double x : data) {
         variance_sum += (x - mean) * (x - mean);
     }
-    return {mean, variance_sum / static_cast<double>(data.size())};
+    const double variance = variance_sum / static_cast<double>(data.size());
+
+    // Min, max, median — data is taken by value so sorting in place is safe.
+    std::sort(data.begin(), data.end());
+    const double min = data.front();
+    const double max = data.back();
+    const std::size_t n = data.size();
+    const double median = (n % 2 == 1)
+        ? data[n / 2]
+        : (data[n / 2 - 1] + data[n / 2]) / 2.0;
+
+    return {mean, variance, min, max, median};
 }
 
 void create_parent_dir(const fs::path& file_path) {
@@ -88,7 +104,7 @@ void create_parent_dir(const fs::path& file_path) {
 void write_to_file(const std::string& collective, const std::string& module,
                    int algorithm, int num_ranks, int rpn, int warmup,
                    int iterations, int size, const std::vector<double>& result) {
-    const Stats stats = compute_moments(result);
+    const Stats stats = compute_stats(result);
     const int nodes = (rpn > 0) ? num_ranks / rpn : num_ranks;
 
     std::cout << "\nCollective:        " << collective
@@ -101,7 +117,10 @@ void write_to_file(const std::string& collective, const std::string& module,
               << "\nWarmup iterations: " << warmup
               << "\nIterations:        " << iterations
               << "\nMean runtime:      " << stats.mean
-              << "\nVariance:          " << stats.variance << '\n'
+              << "\nVariance:          " << stats.variance
+              << "\nMin runtime:       " << stats.min
+              << "\nMax runtime:       " << stats.max
+              << "\nMedian runtime:    " << stats.median << '\n'
               << std::flush;
 
     const fs::path out_path = fs::path("result") / "mpi" / collective /
@@ -109,7 +128,7 @@ void write_to_file(const std::string& collective, const std::string& module,
     create_parent_dir(out_path);
 
     static const std::string header =
-        "collective;module;algorithm;nodes;ranks;rpn;size;warmup;iterations;mean;variance\n";
+        "collective;module;algorithm;nodes;ranks;rpn;size;warmup;iterations;mean;variance;min;max;median\n";
 
     // Write the header only once, when the file is new or empty.
     bool need_header = true;
@@ -126,7 +145,8 @@ void write_to_file(const std::string& collective, const std::string& module,
     }
     out << collective << ';' << module << ';' << algorithm << ';' << nodes << ';'
         << num_ranks << ';' << rpn << ';' << size << ';' << warmup << ';'
-        << iterations << ';' << stats.mean << ';' << stats.variance << '\n';
+        << iterations << ';' << stats.mean << ';' << stats.variance << ';'
+        << stats.min << ';' << stats.max << ';' << stats.median << '\n';
 }
 
 // Shared driver for all collectives: runs `iterations` timed rounds and records
