@@ -24,7 +24,8 @@ export CXX=g++
 
 BUILD_TYPE=Release
 CMAKE_COMMAND=cmake
-HPX_VERSION=master
+#HPX_VERSION=master
+HPX_VERSION=improve_collective_benchmark
 TCP=ON
 MPI=ON
 LCI=ON
@@ -38,8 +39,9 @@ DIR_SRC=${ROOT}/hpx
 DIR_BUILD=${ROOT}/build/hpx
 DIR_INSTALL=${DIR_INSTALL:-${DIR_BUILD}/install}
 
-DOWNLOAD_URL="git@github.com:STEllAR-GROUP/hpx.git"
+#DOWNLOAD_URL="git@github.com:STEllAR-GROUP/hpx.git"
 #DOWNLOAD_URL="https://github.com/STEllAR-GROUP/hpx.git"
+DOWNLOAD_URL="https://github.com/constracktor/hpx.git"
 
 # Clone HPX if not present
 if [[ ! -d ${DIR_SRC} ]]; then
