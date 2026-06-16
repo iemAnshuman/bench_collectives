@@ -118,7 +118,7 @@ void write_to_file(const std::string& collective, const std::string& module,
               << "\nMedian runtime:    " << stats.median << '\n'
               << std::flush;
 
-    const fs::path out_path = fs::path("result") / "mpi" / collective /
+    const fs::path out_path = fs::path("result") / "mpi" / std::to_string(num_ranks) / collective /
                               ("runtimes_" + collective + "_mpi.txt");
     create_parent_dir(out_path);
 
