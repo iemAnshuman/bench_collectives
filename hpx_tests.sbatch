@@ -16,6 +16,8 @@ case "$(hostname)" in
         ;;
     qbd*)
         spack load gcc@14.3.0
+        spack load openmpi
+        export CPATH=$(echo "${CPATH:-}" | tr ':' '\n' | grep -v "intel.*mpi" | tr '\n' ':' | sed 's/:$//')
         ;;
     *)
         echo "ERROR: unknown host $(hostname), cannot load modules" >&2
@@ -48,7 +50,7 @@ execute_task() {
             #8 16; do
             for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do
                 for (( j=0; j<loop; j++ )); do
-                    srun --mpi=pmi2 --time=0:10:00 \
+                    srun --mpi=pmix --time=0:10:00 \
                         -N "$node" --ntasks-per-node "$rpn" -c 2 \
                         "$executable" --arity="$arity" --lpn="$rpn" --operation="$task_name" \
                         --test_size="$test_size" --iterations="$iterations" \

@@ -10,7 +10,9 @@ case "$(hostname)" in
         ;;
     qbd*)
         spack load gcc@14.3.0
-        module load hwloc
+        #module load hwloc
+        spack load openmpi@5.0.10
+        export CPATH=$(echo "${CPATH:-}" | tr ':' '\n' | grep -v "intel.*mpi" | tr '\n' ':' | sed 's/:$//')
         ;;
     *)
         echo "ERROR: unknown host $(hostname), cannot load modules" >&2

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=mpi_collectives           # Job name
-#SBATCH --nodes=4                 # Request up to 16 nodes
+#SBATCH --nodes=8                 # Request up to 16 nodes
 #SBATCH --ntasks-per-node=32       # Default: 16 tasks per node
 #SBATCH --cpus-per-task=2           # 2 cores per task
 #SBATCH --time=72:00:00             # Time limit (hh:mm:ss)
@@ -16,6 +16,8 @@ case "$(hostname)" in
         ;;
     qbd*)
         spack load gcc@14.3.0
+        spack load openmpi@5.0.10
+        export CPATH=$(echo "${CPATH:-}" | tr ':' '\n' | grep -v "intel.*mpi" | tr '\n' ':' | sed 's/:$//')
         ;;
     *)
         echo "ERROR: unknown host $(hostname), cannot load modules" >&2
@@ -49,8 +51,7 @@ execute_task() {
 
   for ((i=0; i<count; i++)); do
     for rpn in 32; do
-        for node in 1 2 4; do
-            #8 16; do
+        for node in 8; do
             #local nodelist="${partition}[$(printf '%02d' 0)-$(printf '%02d' $((node - 1)))]"
             for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do
                 for (( j=0; j<loop; j++ )); do
