@@ -2,8 +2,8 @@
 #SBATCH --job-name=hpx_collectives          # Job name
 #SBATCH --nodes=4                 # Request up to 16 nodes
 #SBATCH --ntasks-per-node=32        # Default: 16 tasks per node
-#SBATCH --cpus-per-task=2           # 1 cores per task
-#SBATCH --time=12:00:00             # Time limit (hh:mm:ss)
+#SBATCH --cpus-per-task=2           # 2 cores per task
+#SBATCH --time=72:00:00             # Time limit (hh:mm:ss)
 #SBATCH --partition=workq         # Specify partition
 #SBATCH --output=logs/output_%j.log      # Standard output log
 #SBATCH --error=logs/error_%j.log        # Error log file
@@ -12,6 +12,7 @@ set -uo pipefail
 case "$(hostname)" in
     rostam1|medusa*)
         module load gcc/14.2.0
+        module load openmpi/5.0.5
         ;;
     qbd*)
         spack load gcc@14.3.0
@@ -21,31 +22,49 @@ case "$(hostname)" in
         exit 1
         ;;
 esac
-parcelport=mpi # one of: tcp, mpi, lci
+
 executable="$(pwd)/build/hpx/bin/benchmark_collectives_test"
+pairs=("broadcast" "reduce" "scatter" "gather" "all_gather" "all_reduce" "all_to_all")
+export PMIX_MCA_gds=hash
+
+# Parse command-line arguments
+parcelport=tcp  # default; override with --parcelport=<tcp|mpi|lci>
+for arg in "$@"; do
+    case "$arg" in
+        --parcelport=*) parcelport="${arg#--parcelport=}" ;;
+        *) echo "WARNING: unknown argument '$arg'" >&2 ;;
+    esac
+done
+echo "Using parcelport: $parcelport"
 iterations=10
 loop=10
 
-# Larger sizes (16384 65536 262144 1048576) omitted to fit the time limit.
-for test_size in 1 2 4 8 16 64 256 1024 4096; do
-    for lpn in 32; do
+execute_task() {
+  local task_name=$1
+
+  for arity in -1 2 4 8; do
+    for rpn in 32; do
         for node in 1 2 4; do
-            for arity in -1 2 4 8; do
-                for operation in "broadcast" "reduce" "gather" "scatter"; do
-                    echo "operation $operation, node $node, arity $arity, test_size $test_size, lpn $lpn"
-                    for (( j=0; j<loop; j++ )); do
-                        srun --mpi=pmi2 -N "$node" --ntasks-per-node "$lpn" -c 2 \
-                             "$executable" --arity="$arity" --lpn="$lpn" --operation="$operation" \
-                             --test_size="$test_size" --iterations="$iterations" \
-                             --hpx:ini=hpx.parcel.tcp.enable=0 \
-                             --hpx:ini=hpx.parcel.mpi.enable=0 \
-                             --hpx:ini=hpx.parcel.lci.enable=0 \
-                             --hpx:ini=hpx.parcel."$parcelport".enable=1 \
-                             --hpx:ini=hpx.parcel.bootstrap="$parcelport" \
-                             --hpx:ini=hpx.parcel."$parcelport".priority=1000
-                    done
+            #8 16; do
+            for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do
+                for (( j=0; j<loop; j++ )); do
+                    srun --mpi=pmi2 --time=0:10:00 \
+                        -N "$node" --ntasks-per-node "$rpn" -c 2 \
+                        "$executable" --arity="$arity" --lpn="$rpn" --operation="$task_name" \
+                        --test_size="$test_size" --iterations="$iterations" \
+                        --hpx:ini=hpx.parcel.tcp.enable=0 \
+                        --hpx:ini=hpx.parcel.mpi.enable=0 \
+                        --hpx:ini=hpx.parcel.lci.enable=0 \
+                        --hpx:ini=hpx.parcel."$parcelport".enable=1 \
+                        --hpx:ini=hpx.parcel.bootstrap="$parcelport" \
+                        --hpx:ini=hpx.parcel."$parcelport".priority=1000
                 done
             done
         done
     done
+  done
+}
+
+for operation in "${pairs[@]}"; do
+  execute_task "$operation"
 done
