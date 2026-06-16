@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=mpi_collectives           # Job name
-#SBATCH --nodes=8                 # Request up to 16 nodes
+#SBATCH --nodes=1                 # Overridden at submission time via --nodes=
 #SBATCH --ntasks-per-node=32       # Default: 16 tasks per node
 #SBATCH --cpus-per-task=2           # 2 cores per task
 #SBATCH --time=72:00:00             # Time limit (hh:mm:ss)
@@ -32,6 +32,16 @@ partition=workq
 iterations=10
 loop=10
 
+# Parse command-line arguments
+nodes=1  # default; override with --nodes=<n>
+for arg in "$@"; do
+    case "$arg" in
+        --nodes=*) nodes="${arg#--nodes=}" ;;
+        *) echo "WARNING: unknown argument '$arg'" >&2 ;;
+    esac
+done
+echo "Using nodes: $nodes"
+
 execute_task() {
   local task_name=$1
   local count=$2
@@ -51,17 +61,14 @@ execute_task() {
 
   for ((i=0; i<count; i++)); do
     for rpn in 32; do
-        for node in 8; do
-            #local nodelist="${partition}[$(printf '%02d' 0)-$(printf '%02d' $((node - 1)))]"
-            for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do
-                for (( j=0; j<loop; j++ )); do
-                    srun --mpi=pmi2 --time=0:10:00 \
-                        --export=ALL,OMPI_MCA_coll_tuned_use_dynamic_rules=1,OMPI_MCA_coll_tuned_${mca_op}_algorithm=$i \
-                        -N "$node" --ntasks-per-node "$rpn" -c 2 \
-                        "$executable" --algorithm="$i" --rpn="$rpn" --operation="$task_name" \
-                        --test_size="$test_size" --iterations="$iterations" \
-                        --warmup_iterations=3
-                done
+        for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do
+            for (( j=0; j<loop; j++ )); do
+                srun --mpi=pmix --time=0:10:00 \
+                    --export=ALL,OMPI_MCA_coll_tuned_use_dynamic_rules=1,OMPI_MCA_coll_tuned_${mca_op}_algorithm=$i \
+                    -N "$nodes" --ntasks-per-node "$rpn" -c 2 \
+                    "$executable" --algorithm="$i" --rpn="$rpn" --operation="$task_name" \
+                    --test_size="$test_size" --iterations="$iterations" \
+                    --warmup_iterations=3
             done
         done
     done
