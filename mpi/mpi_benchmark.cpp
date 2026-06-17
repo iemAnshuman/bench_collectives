@@ -119,6 +119,7 @@ void write_to_file(const std::string& collective, const std::string& module,
               << std::flush;
 
     const fs::path out_path = fs::path("result") / "mpi" / std::to_string(num_ranks) / collective /
+                              std::to_string(algorithm) /
                               ("runtimes_" + collective + "_mpi.txt");
     create_parent_dir(out_path);
 

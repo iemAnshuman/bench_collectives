@@ -95,7 +95,7 @@ this automatically.
 Results are written to:
 
 - HPX: `result/hpx/<parcelport>/<num_localities>/<collective>/runtimes_<collective>_hpx.txt`
-- MPI: `result/mpi/<num_ranks>/<collective>/runtimes_<collective>_mpi.txt`
+- MPI: `result/mpi/<num_ranks>/<collective>/<algorithm>/runtimes_<collective>_mpi.txt`
 
 Both formats use the same semicolon-separated columns:
 

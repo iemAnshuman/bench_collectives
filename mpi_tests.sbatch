@@ -26,7 +26,40 @@ case "$(hostname)" in
 esac
 
 executable="$(pwd)/build/mpi/bin/benchmark_collectives_mpi"
-pairs=("broadcast 1" "reduce 1" "scatter 1" "gather 1" "all_gather 1" "all_reduce 1" "all_to_all 1")
+
+# Algorithm IDs for OpenMPI 5.x coll/tuned component
+# (OMPI_MCA_coll_tuned_use_dynamic_rules=1 must be set for these to apply).
+# 0 = ignore / let OpenMPI auto-select.
+# Source: ompi/mca/coll/tuned/coll_tuned_decision_fixed.c (v5.0.5)
+#
+# broadcast  (mca: bcast)
+#   1 basic_linear  2 chain  3 pipeline  4 split_binary_tree
+#   5 binary_tree   6 binomial  7 knomial  8 scatter_allgather
+#   9 scatter_allgather_ring
+#
+# reduce
+#   1 linear  2 chain  3 pipeline  4 binary
+#   5 binomial  6 in-order_binary  7 rabenseifner
+#
+# scatter
+#   1 basic_linear  2 binomial  3 linear_nb
+#
+# gather
+#   1 basic_linear  2 binomial  3 linear_sync
+#
+# all_gather  (mca: allgather)
+#   1 linear  2 bruck  3 recursive_doubling
+#   4 ring  5 neighbor  6 two_proc
+#
+# all_reduce  (mca: allreduce)
+#   1 basic_linear  2 nonoverlapping  3 recursive_doubling
+#   4 ring  5 segmented_ring  6 rabenseifner
+#
+# all_to_all  (mca: alltoall)
+#   1 linear  2 pairwise  3 modified_bruck  4 linear_sync  5 two_proc
+
+# "<operation> <num_algorithms>" — loops algorithm IDs 0..(n-1)
+pairs=("broadcast 10" "reduce 8" "scatter 4" "gather 4" "all_gather 7" "all_reduce 7" "all_to_all 6")
 export PMIX_MCA_gds=hash
 partition=workq
 iterations=10
