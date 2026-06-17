@@ -94,8 +94,24 @@ this automatically.
 
 Results are written to:
 
-- HPX: `result/hpx/<parcelport>/<num_localities>/<collective>/runtimes_<collective>_hpx.txt`
+- HPX: `result/hpx/<parcelport>/<num_localities>/<collective>/runtimes_<collective>_<variant>.txt`
+  where `<variant>` is the collective implementation (e.g. `single_use`, `multi_use`, `hierarchical_2`)
 - MPI: `result/mpi/<num_ranks>/<collective>/<algorithm>/runtimes_<collective>_mpi.txt`
+
+### MPI algorithm IDs (OpenMPI 5.x coll/tuned, verified against v5.0.5 and v5.0.10)
+
+`OMPI_MCA_coll_tuned_use_dynamic_rules=1` must be set for these to apply.
+Algorithm `0` = ignore (OpenMPI auto-selects).
+
+| Collective | MCA suffix | IDs |
+| --- | --- | --- |
+| broadcast | `bcast` | 1 basic_linear, 2 chain, 3 pipeline, 4 split_binary_tree, 5 binary_tree, 6 binomial, 7 knomial, 8 scatter_allgather, 9 scatter_allgather_ring |
+| reduce | `reduce` | 1 linear, 2 chain, 3 pipeline, 4 binary, 5 binomial, 6 in-order_binary, 7 rabenseifner |
+| scatter | `scatter` | 1 basic_linear, 2 binomial, 3 linear_nb |
+| gather | `gather` | 1 basic_linear, 2 binomial, 3 linear_sync |
+| all_gather | `allgather` | 1 linear, 2 bruck, 3 recursive_doubling, 4 ring, 5 neighbor, 6 two_proc |
+| all_reduce | `allreduce` | 1 basic_linear, 2 nonoverlapping, 3 recursive_doubling, 4 ring, 5 segmented_ring, 6 rabenseifner |
+| all_to_all | `alltoall` | 1 linear, 2 pairwise, 3 modified_bruck, 4 linear_sync, 5 two_proc |
 
 Both formats use the same semicolon-separated columns:
 
