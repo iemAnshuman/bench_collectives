@@ -63,7 +63,7 @@ pairs=("broadcast 10" "reduce 8" "scatter 4" "gather 4" "all_gather 7" "all_redu
 export PMIX_MCA_gds=hash
 partition=workq
 iterations=10
-loop=10
+loop=5
 
 # Parse command-line arguments
 nodes=1  # default; override with --nodes=<n>
@@ -94,7 +94,7 @@ execute_task() {
 
   for ((i=0; i<count; i++)); do
     for rpn in 32; do
-        for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do
+        for test_size in 1 4 16 64 256 1024 4096 16384; do
             for (( j=0; j<loop; j++ )); do
                 srun --mpi=pmix --time=0:10:00 \
                     --export=ALL,OMPI_MCA_coll_tuned_use_dynamic_rules=1,OMPI_MCA_coll_tuned_${mca_op}_algorithm=$i \

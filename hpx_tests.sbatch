@@ -41,14 +41,14 @@ for arg in "$@"; do
 done
 echo "Using parcelport: $parcelport, nodes: $nodes"
 iterations=10
-loop=10
+loop=5
 
 execute_task() {
   local task_name=$1
 
   for arity in -1 2 4 8; do
     for rpn in 32; do
-        for test_size in 1 4 16 64 256 1024 4096 16384 65536 262144 1048576 4194304 16777216; do
+        for test_size in 1 4 16 64 256 1024 4096 16384; do
             for (( j=0; j<loop; j++ )); do
                 srun --mpi=pmix --time=0:10:00 \
                     -N "$nodes" --ntasks-per-node "$rpn" -c 2 \
