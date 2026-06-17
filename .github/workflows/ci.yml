@@ -34,8 +34,8 @@ jobs:
 
       - name: Check results were written
         run: |
-          test -f result/mpi/broadcast/runtimes_broadcast_mpi.txt
-          test -f result/mpi/reduce/runtimes_reduce_mpi.txt
-          test -f result/mpi/scatter/runtimes_scatter_mpi.txt
-          test -f result/mpi/gather/runtimes_gather_mpi.txt
-          cat result/mpi/*/runtimes_*_mpi.txt
+          test -n "$(find result/mpi -name 'runtimes_broadcast_mpi.txt')"
+          test -n "$(find result/mpi -name 'runtimes_reduce_mpi.txt')"
+          test -n "$(find result/mpi -name 'runtimes_scatter_mpi.txt')"
+          test -n "$(find result/mpi -name 'runtimes_gather_mpi.txt')"
+          find result/mpi -name 'runtimes_*_mpi.txt' -exec cat {} \;
