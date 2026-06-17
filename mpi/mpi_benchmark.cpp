@@ -290,7 +290,7 @@ void test_gather(const CollectiveBench& cfg) {
     std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size) * size, 0);
 
     cfg.run(
-        [&](int) { std::fill(send_data.begin(), send_data.end(), rank); },
+        [&](int) {},
         [&] {
             MPI_Gather(send_data.data(), cfg.test_size, MPI_INT, recv_data.data(),
                        cfg.test_size, MPI_INT, kRoot, MPI_COMM_WORLD);
@@ -316,7 +316,7 @@ void test_all_gather(const CollectiveBench& cfg) {
     std::vector<int> recv_data(static_cast<std::size_t>(cfg.test_size) * size, 0);
 
     cfg.run(
-        [&](int) { std::fill(send_data.begin(), send_data.end(), rank); },
+        [&](int) {},
         [&] {
             MPI_Allgather(send_data.data(), cfg.test_size, MPI_INT, recv_data.data(),
                           cfg.test_size, MPI_INT, MPI_COMM_WORLD);
